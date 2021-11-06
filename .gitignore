@@ -1,0 +1,12 @@
+.vs/
+*.pdb
+*.iobj
+*.ipdb
+Debug/
+x64/Debug/
+MindHashTable/Debug/
+MindHashTable/DebugWR/
+MindHashTable/Release/
+MindHashTable/x64/Debug/
+MindHashTable/x64/Release/
+StructLayoutSettings.json
