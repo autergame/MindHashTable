@@ -39,27 +39,26 @@ public:
 	void LoadFromFile(const char* filePath);
 };
 
-uint64_t murmurmix64(uint64_t value)
+uint64_t murmurmix(uint64_t value)
 {
-	value ^= value >> 33ULL;
+	value ^= value >> 32ULL;
 	value *= 0xff51afd7ed558ccdULL;
-	value ^= value >> 33ULL;
+	value ^= value >> 32ULL;
 	value *= 0xc4ceb9fe1a85ec53ULL;
-	value ^= value >> 33ULL;
+	value ^= value >> 32ULL;
 	return value;
 }
 
 std::string HashTable::Lookup(const uint64_t key)
 {
-	uint64_t pos = key % sizeTable;
-	HashTableNode* list = table[pos];
-	HashTableNode* temp = list;
+	size_t pos = key % sizeTable;
+	HashTableNode* temp = table[pos];
 	while (temp)
 	{
 		if (temp->key == key) {
 			return temp->value;
 		}
-		pos = murmurmix64(key + temp->deep) % sizeTable;
+		pos = murmurmix(key + temp->deep + 1) % sizeTable;
 		temp = temp->nextTable[pos];
 	}
 	return std::string();
@@ -67,19 +66,10 @@ std::string HashTable::Lookup(const uint64_t key)
 
 int HashTable::Insert(const uint64_t key, const std::string& val)
 {
-	uint64_t pos = key % sizeTable;
-	if (table[pos] == nullptr)
-	{
-		HashTableNode* newNode = new HashTableNode{ 0, key, val };
-		newNode->nextTable.resize(sizeTable);
-		table[pos] = newNode;
-		return 1;
-	}
-
 	int deep = 0;
-	std::vector<HashTableNode*>* tempSave = nullptr;
-	HashTableNode* list = table[pos];
-	HashTableNode* temp = list;
+	size_t pos = key % sizeTable;
+	std::vector<HashTableNode*>* tempSave = &table;
+	HashTableNode* temp = table[pos];
 	while (temp)
 	{
 		if (temp->key == key) {
@@ -88,7 +78,7 @@ int HashTable::Insert(const uint64_t key, const std::string& val)
 		}
 		deep++;
 		tempSave = &temp->nextTable;
-		pos = murmurmix64(key + deep) % sizeTable;
+		pos = murmurmix(key + deep) % sizeTable;
 		temp = temp->nextTable[pos];
 	}
 	HashTableNode* newNode = new HashTableNode{ deep, key, val };
@@ -214,14 +204,6 @@ void PrintTable(HashTable& hashT)
 	ofs.close();
 }
 
- uint32_t FNV1Hash(std::string& string)
-{
-	uint32_t Hash = 0x811c9dc5;
-	for (size_t i = 0; i < string.size(); i++)
-		Hash = (Hash ^ tolower(string[i])) * 0x01000193;
-	return Hash;
-}
-
 int main()
 {
 	HashTable hashT;
@@ -229,18 +211,9 @@ int main()
 
 	hashT.LoadFromFile("test.txt");
 
-	//std::string test1 = "test1";
-	//std::string test2 = "test2";
-	//std::string test3 = "test3";
-	//std::string test4 = "test4";
-	//hashT.Insert(FNV1Hash(test1), test1);
-	//hashT.Insert(FNV1Hash(test2), test2);
-	//hashT.Insert(FNV1Hash(test3), test3);
-	//hashT.Insert(FNV1Hash(test4), test4);
-
 	PrintTable(hashT);
 
-	std::cout << hashT.Lookup(0xc7f1fbc7) << std::endl;
+	std::cout << hashT.Lookup(0x9860cec6) << std::endl;
 
 	return 0;
 }
