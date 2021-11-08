@@ -5,6 +5,7 @@
 #include <list>
 #include <vector>
 #include <string>
+#include <iomanip>
 #include <fstream>
 #include <sstream>
 #include <iostream>
@@ -34,72 +35,66 @@ public:
 	}
 
 	std::string Lookup(const uint64_t key);
-	int Insert(const uint64_t key, const std::string val);
+	int Insert(const uint64_t key, const std::string& val);
 	void LoadFromFile(const char* filePath);
 };
 
+uint64_t murmurmix64(uint64_t value)
+{
+	value ^= value >> 33ULL;
+	value *= 0xff51afd7ed558ccdULL;
+	value ^= value >> 33ULL;
+	value *= 0xc4ceb9fe1a85ec53ULL;
+	value ^= value >> 33ULL;
+	return value;
+}
+
 std::string HashTable::Lookup(const uint64_t key)
 {
-	int deep = 0;
 	uint64_t pos = key % sizeTable;
-	HashTableNode* temp = table[pos];
+	HashTableNode* list = table[pos];
+	HashTableNode* temp = list;
 	while (temp)
 	{
-		if (temp->key == key)
-		{
+		if (temp->key == key) {
 			return temp->value;
 		}
-		deep++;
-		pos = (key + deep) % sizeTable;
+		pos = murmurmix64(key + temp->deep) % sizeTable;
 		temp = temp->nextTable[pos];
 	}
 	return std::string();
 }
 
-int HashTable::Insert(const uint64_t key, const std::string val)
+int HashTable::Insert(const uint64_t key, const std::string& val)
 {
-	if (HashTable::Lookup(key).size() == 0)
+	uint64_t pos = key % sizeTable;
+	if (table[pos] == nullptr)
 	{
-		uint64_t pos = key % sizeTable;
-		//printf("%016" PRIX64 " %s\n", key, val.c_str());
-		if (table[pos])
-		{
-			int deep = 0;
-			std::vector<HashTableNode*>* tempSave = nullptr;
-			HashTableNode* temp = table[pos];
-			while (temp)
-			{
-				if (temp->key == key)
-				{
-					temp->value = val;
-					return 0;
-				}
-				deep++;
-				tempSave = &temp->nextTable;
-				pos = (key + deep) % sizeTable;
-				temp = temp->nextTable[pos];
-				//printf(">Pos %" PRIu64 ", Deep %d ", pos, deep);
-			}
-			HashTableNode* newNode = new HashTableNode;
-			newNode->deep = deep;
-			newNode->key = key;
-			newNode->value = val;
-			newNode->nextTable.resize(sizeTable);
-			(*tempSave)[pos] = newNode;
-			//printf("\n");
-		}
-		else
-		{
-			//printf(">Adding a root tree, Pos %" PRIu64 "\n", pos);
-			HashTableNode* newNode = new HashTableNode;
-			newNode->key = key;
-			newNode->value = val;
-			newNode->nextTable.resize(sizeTable);
-			table[pos] = newNode;
-		}
+		HashTableNode* newNode = new HashTableNode{ 0, key, val };
+		newNode->nextTable.resize(sizeTable);
+		table[pos] = newNode;
 		return 1;
 	}
-	return 0;
+
+	int deep = 0;
+	std::vector<HashTableNode*>* tempSave = nullptr;
+	HashTableNode* list = table[pos];
+	HashTableNode* temp = list;
+	while (temp)
+	{
+		if (temp->key == key) {
+			temp->value = val;
+			return 0;
+		}
+		deep++;
+		tempSave = &temp->nextTable;
+		pos = murmurmix64(key + deep) % sizeTable;
+		temp = temp->nextTable[pos];
+	}
+	HashTableNode* newNode = new HashTableNode{ deep, key, val };
+	newNode->nextTable.resize(sizeTable);
+	(*tempSave)[pos] = newNode;
+	return 1;
 }
 
 void HashTable::LoadFromFile(const char* filePath)
@@ -109,7 +104,7 @@ void HashTable::LoadFromFile(const char* filePath)
 	{
 		char errMsg[255] = { "\0" };
 		strerror_s(errMsg, 255, errno);
-		printf("ERROR: Cannot read file %s %s\n", filePath, errMsg);
+		std::cout << "ERROR: Cannot read file " << filePath << " " << errMsg << std::endl;
 		return;
 	}
 
@@ -130,78 +125,96 @@ void HashTable::LoadFromFile(const char* filePath)
 
 		const std::string value = line.data() + hashEnd + 1;
 		lines += HashTable::Insert(key, value);
-
-		if (lines >= 10)
-			break;
 	}
 
 	ifs.close();
-
-	//printf("File: %s loaded: %zd lines\n", filePath, lines);
+	std::cout << "File: " << filePath << " loaded: " << lines << " lines" << std::endl;
 }
 
-void PrintIndention(int indention)
+struct indent
 {
-	printf("%*s", indention, "    ");
+	int indention = 0;
+	friend std::ostream& operator<<(std::ostream& stream, const indent& val);
+};
+
+std::ostream& operator<<(std::ostream& stream, const indent& val) {
+	stream << std::string(val.indention * 4, ' ');
+	return stream;
 }
 
-void PrintTableRecursion(std::vector<HashTableNode*>& hashTableVector, size_t sizeTable, int deep)
+bool TableHasValues(std::vector<HashTableNode*>& hashTableVector, size_t sizeTable)
 {
 	for (size_t i = 0; i < sizeTable; i++)
 	{
-		PrintIndention(deep * 4);
-		printf("\"%zd\":", i);
+		HashTableNode* temp = hashTableVector[i];
+		if (temp != nullptr)
+			return true;
+	}
+	return false;
+}
+
+void PrintTableRecursion(std::vector<HashTableNode*>& hashTableVector, size_t sizeTable,
+	std::ofstream& ofs, int indention)
+{
+	for (size_t i = 0; i < sizeTable; i++)
+	{
 		HashTableNode* temp = hashTableVector[i];
 		if (temp)
 		{
-			int deepFix = (deep + 1) * 4;
-			printf(" {\n");
+			ofs << indent(indention) << '"' << std::dec << i << '"' << ": {" << std::endl;
 
-				PrintIndention(deepFix);
-				printf("\"deep\": %d,\n", temp->deep);
-				PrintIndention(deepFix);
-				printf("\"key\": 0x%016" PRIX64 ",\n", temp->key);
-				PrintIndention(deepFix);
-				printf("\"value\": \"%s\",\n", temp->value.c_str());
+				ofs << indent(indention + 1) << '"' << "deep" << '"' << ": " 
+					<< temp->deep << ',' << std::endl;
 
-				PrintIndention(deepFix);
-				printf("\"Table\":\n");
+				ofs << indent(indention + 1) << '"' << "key" << '"' << ": " << '"' << "0x" 
+					<< std::uppercase << std::setw(16) << std::hex << std::setfill('0') 
+					<< temp->key << '"' << ',' << std::endl;
 
-				PrintIndention(deepFix);
-				printf("{\n");
-					PrintTableRecursion(temp->nextTable, sizeTable, deep + 2);
-				PrintIndention(deepFix);
-				printf("}\n");
+				ofs << indent(indention + 1) << '"' << "value" << '"' << ": " << '"' 
+					<< temp->value << '"' << ',' << std::endl;
 
-			PrintIndention(deep * 4);
-			printf("}");
+				ofs << indent(indention + 1) << '"' << "Table" << '"' << ':';
+
+				if (TableHasValues(temp->nextTable, sizeTable))
+				{
+					ofs << std::endl;
+					ofs << indent(indention + 1) << '{' << std::endl;
+					PrintTableRecursion(temp->nextTable, sizeTable, ofs, indention + 2);
+					ofs << indent(indention + 1) << '}' << std::endl;
+				}
+				else
+					ofs << " {}" << std::endl;
+
+			ofs << indent(indention) << '}';
 			if (i < sizeTable - 1)
-				printf(",");
-			printf("\n");
-		}
-		else {
-			printf(" {}");
-			if (i < sizeTable - 1)
-				printf(",");
-			printf("\n");
+				ofs << ',';
+			ofs << std::endl;
 		}
 	}
 }
 
 void PrintTable(HashTable& hashT)
 {
-	printf("{\n");
-	PrintIndention(4);
-		printf("\"Table\":\n");
-		PrintIndention(4);
-		printf("{\n");
-			PrintTableRecursion(hashT.table, hashT.sizeTable, 2);
-		PrintIndention(4);
-		printf("}\n");
-	printf("}");
+	std::ofstream ofs("output.json");
+	if (!ofs.is_open())
+	{
+		char errMsg[255] = { "\0" };
+		strerror_s(errMsg, 255, errno);
+		std::cout << "ERROR: Cannot write file output.json " << errMsg << std::endl;
+		return;
+	}
+
+	ofs << '{' << std::endl;
+		ofs << indent(1) << '"' << "Table" << '"' << ':' << std::endl;
+		ofs << indent(1) << '{' << std::endl;
+			PrintTableRecursion(hashT.table, hashT.sizeTable, ofs, 2);
+		ofs << indent(1) << '}' << std::endl;
+	ofs << '}' << std::endl;
+
+	ofs.close();
 }
 
- uint32_t FNV1Hash(std::string string)
+ uint32_t FNV1Hash(std::string& string)
 {
 	uint32_t Hash = 0x811c9dc5;
 	for (size_t i = 0; i < string.size(); i++)
@@ -212,7 +225,7 @@ void PrintTable(HashTable& hashT)
 int main()
 {
 	HashTable hashT;
-	hashT.Reserve(3);
+	hashT.Reserve(10);
 
 	hashT.LoadFromFile("test.txt");
 
@@ -227,7 +240,7 @@ int main()
 
 	PrintTable(hashT);
 
-	printf("%s\n", hashT.Lookup(0xea452f2f).c_str());
+	std::cout << hashT.Lookup(0xc7f1fbc7) << std::endl;
 
 	return 0;
 }
