@@ -3,7 +3,8 @@
 #include <fstream>
 #include <iostream>
 
-template<typename T> class List
+template<typename T>
+class List
 {
 public:
 	class Item
@@ -163,6 +164,8 @@ struct indent
 {
 	int indention = 0;
 	friend std::ostream& operator<<(std::ostream& stream, const indent& val);
+
+	indent(int indention) : indention(indention) {}
 };
 
 std::ostream& operator<<(std::ostream& stream, const indent& val) {
@@ -237,7 +240,7 @@ int main()
 
 	hashT.LoadFromFile("test.txt");
 
-	std::cout << hashT.Lookup(0xb375545f) << std::endl;
+	std::cout << hashT.Lookup(0xd96ab010) << std::endl;
 
 	PrintTable(hashT);
 
