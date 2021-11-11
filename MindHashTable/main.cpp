@@ -11,7 +11,7 @@ public:
 	public:
 		T value;
 		int index;
-		Item* next;	
+		Item* next;
 
 		Item() : value(), index(0), next(nullptr) {}
 		Item(int index) : value(), index(index), next(nullptr) {}
@@ -25,8 +25,8 @@ public:
 
 	List() : head(nullptr), total(0) {}
 
-    ~List()
-    {
+	~List()
+	{
 		Item* current = head;
 		while (current != nullptr) 
 		{
@@ -35,10 +35,10 @@ public:
 			current = next;
 		}
 		head = nullptr;
-    }
+	}
 
-    T& operator[](int index)
-    {
+	T& operator[](int index)
+	{
 		for (Item* node = head; node != nullptr; node = node->next)
 		{
 			if (node->index == index)
@@ -49,7 +49,7 @@ public:
 		head = newItem;
 		total++;
 		return newItem->value;
-    }
+	}
 
 	bool hasValues() { return head != nullptr; }
 };
@@ -59,7 +59,7 @@ struct HashTableNode
 	int deep;
 	uint64_t key;
 	std::string value;
-    List<HashTableNode*> nextTable;
+	List<HashTableNode*> nextTable;
 
 	HashTableNode() : deep(0), key(0), value("") {}
 	HashTableNode(int deep, uint64_t key, std::string value) : deep(deep), key(key), value(value) {}
@@ -69,7 +69,7 @@ class HashTable
 {
 public:
 	size_t sizeTable;
-    List<HashTableNode*> table;
+	List<HashTableNode*> table;
 
 	HashTable() : sizeTable(5) {}
 	HashTable(size_t tablesize) : sizeTable(tablesize) {}
@@ -107,7 +107,7 @@ int HashTable::Insert(const uint64_t key, const std::string& val)
 {
 	int deep = 0;
 	size_t pos = key % sizeTable;
-    List<HashTableNode*>* tempSave = &table;
+	List<HashTableNode*>* tempSave = &table;
 	HashTableNode* temp = table[pos];
 	while (temp)
 	{
