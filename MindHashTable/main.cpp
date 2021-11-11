@@ -1,142 +1,78 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <inttypes.h>
-
-#include <list>
-#include <vector>
 #include <string>
 #include <iomanip>
 #include <fstream>
-#include <sstream>
 #include <iostream>
-#include <algorithm>
-#include <unordered_map>
 
 template<typename T> class List
 {
 public:
-	struct Item
+	class Item
 	{
+	public:
 		T value;
 		int index;
-		Item* prev;
-		Item* next;
+		Item* next;	
 
-		Item() : value(), index(0), prev(nullptr), next(nullptr) {}
-		Item(int index) : value(), index(index), prev(nullptr), next(nullptr) {}
+		Item() : value(), index(0), next(nullptr) {}
+		Item(int index) : value(), index(index), next(nullptr) {}
 
-		~Item() { value.~T(); }
+		~Item() { delete value; }
+
+		friend class List;
 	};
-	struct ItemBlock
-	{
-		ItemBlock* next;
-	};
+	Item* head;
+	size_t total;
 
-	Item* _begin;
-	Item* _end;
-	Item endItem;
-	Item* freeItem;
-	ItemBlock* blocks;
-
-    List() : _end(&endItem), _begin(&endItem), freeItem(nullptr), blocks(nullptr)
-    {
-        endItem.prev = 0;
-        endItem.next = 0;
-    }
+	List() : head(nullptr), total(0) {}
 
     ~List()
     {
-		for (Item* i = _begin, *end = &endItem; i != end; i = i->next)
-            i->~Item();
-        for (ItemBlock* i = blocks, *next = nullptr; i; i = next)
-        {
-            next = i->next;
-            free(i);
-        }
-    }
-	
-	Item* find(T& value)
-    {
-		for (Item* i = _begin, *end = &endItem; i != end; i = i->next)
-            if (i->value == value)
-                return i;
-        return _end;
-    }
-
-	Item* findbyindex(int index)
-	{
-		for (Item* i = _begin, *end = &endItem; i != end; i = i->next)
-			if (i->index == index)
-				return i;
-		return _end;
-	}
-
-	Item* insert(Item* position, int index)
-    {
-        Item* item = freeItem;
-        if (!item)
-        {
-            size_t allocatedSize = sizeof(ItemBlock) + sizeof(Item);
-            ItemBlock* itemBlock = (ItemBlock*)malloc(allocatedSize);
-            itemBlock->next = blocks;
-            blocks = itemBlock;
-            for (Item* i = (Item*)(itemBlock + 1), *end = i + (allocatedSize - sizeof(ItemBlock)) / sizeof(Item); i < end; ++i)
-            {
-                i->prev = item;
-                item = i;
-            }
-            freeItem = item;
-        }
-
-        item = new Item(index);
-        freeItem = item->prev;
-
-		Item* insertPos = position;
-        if ((item->prev = insertPos->prev))
-            insertPos->prev->next = item;
-        else
-			_begin = item;
-
-        item->next = insertPos;
-        insertPos->prev = item;
-        return item;
+		Item* current = head;
+		while (current != nullptr) 
+		{
+			Item* next = current->next;
+			delete current;
+			current = next;
+		}
+		head = nullptr;
     }
 
     T& operator[](int index)
     {
-		Item* result = findbyindex(index);
-		if (result == _end)
-			result = insert(result, index);
-		return result->value;
+		for (Item* node = head; node != nullptr; node = node->next)
+		{
+			if (node->index == index)
+				return node->value;
+		}
+		Item* newItem = new Item(index);
+		newItem->next = head;
+		head = newItem;
+		total++;
+		return newItem->value;
     }
 
-	bool isEmpty() { return endItem.prev == 0; }
+	bool hasValues() { return head != nullptr; }
 };
 
 struct HashTableNode
 {
-	int deep = 0;
-	uint64_t key = 0;
-	std::string value = "";
+	int deep;
+	uint64_t key;
+	std::string value;
     List<HashTableNode*> nextTable;
+
+	HashTableNode() : deep(0), key(0), value("") {}
+	HashTableNode(int deep, uint64_t key, std::string value) : deep(deep), key(key), value(value) {}
 };
 
 class HashTable
 {
 public:
-	size_t sizeTable = 0;
+	size_t sizeTable;
     List<HashTableNode*> table;
 
-	void Clean(List<HashTableNode*>& table)
-	{
-		if (table.isEmpty())
-			return;
-		//Clean(table); // HAS TO BE FOR EACH
-		table.~List();
-	}
-
+	HashTable() : sizeTable(5) {}
 	HashTable(size_t tablesize) : sizeTable(tablesize) {}
-	~HashTable() { Clean(table); }
 
 	std::string Lookup(const uint64_t key);
 	int Insert(const uint64_t key, const std::string& val);
@@ -159,9 +95,8 @@ std::string HashTable::Lookup(const uint64_t key)
 	HashTableNode* temp = table[pos];
 	while (temp)
 	{
-		if (temp->key == key) {
+		if (temp->key == key)
 			return temp->value;
-		}
 		pos = murmurmix(key + temp->deep + 1) % sizeTable;
 		temp = temp->nextTable[pos];
 	}
@@ -176,7 +111,7 @@ int HashTable::Insert(const uint64_t key, const std::string& val)
 	HashTableNode* temp = table[pos];
 	while (temp)
 	{
-		if (temp->key == key) {
+		if (temp->key == key)  {
 			temp->value = val;
 			return 0;
 		}
@@ -185,7 +120,7 @@ int HashTable::Insert(const uint64_t key, const std::string& val)
 		pos = murmurmix(key + deep) % sizeTable;
 		temp = temp->nextTable[pos];
 	}
-	HashTableNode* newNode = new HashTableNode{ deep, key, val };
+	HashTableNode* newNode = new HashTableNode(deep, key, val);
 	(*tempSave)[pos] = newNode;
 	return 1;
 }
@@ -257,7 +192,7 @@ void PrintTableRecursion(List<HashTableNode*>& hashTableVector, size_t sizeTable
 
 				ofs << indent(indention + 1) << '"' << "Table" << '"' << ':';
 
-				if (!temp->nextTable.isEmpty())
+				if (temp->nextTable.hasValues())
 				{
 					ofs << std::endl;
 					ofs << indent(indention + 1) << '{' << std::endl;
@@ -268,7 +203,7 @@ void PrintTableRecursion(List<HashTableNode*>& hashTableVector, size_t sizeTable
 					ofs << " {}" << std::endl;
 
 			ofs << indent(indention) << '}';
-			if (i < sizeTable - 1)
+			if (i < hashTableVector.total - 1)
 				ofs << ',';
 			ofs << std::endl;
 		}
