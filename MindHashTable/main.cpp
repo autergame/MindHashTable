@@ -4,7 +4,7 @@
 #include <fstream>
 #include <iostream>
 
-template<typename T>
+template<class T>
 class List
 {
 public:
@@ -60,91 +60,89 @@ public:
 	bool hasValues() { return head != nullptr; }
 };
 
-struct HashTableNode
+uint32_t scramble(uint32_t k)
 {
-	int deep;
-	uint64_t key;
-	std::string value;
-	List<HashTableNode*> nextTable;
-
-	HashTableNode() : deep(0), key(0), value("") {}
-	HashTableNode(int deep, uint64_t key, std::string value) :
-		deep(deep), key(key), value(value) {}
-};
-
-class HashTable
-{
-public:
-	size_t sizeTable;
-	List<HashTableNode*> table;
-
-	HashTable() : sizeTable(5) {}
-
-	std::string Lookup(const uint64_t key);
-	int Insert(const uint64_t key, const std::string& val);
-	void LoadFromFile(std::string filePath);
-};
-
-uint32_t murmur32scramble(uint32_t k)
-{
-	k *= 0xcc9e2d51;
-	k = (k << 15) | (k >> 17);
-	k *= 0x1b873593;
+	k *= 0x61757465;
+	k = (k << 19) | (k >> 13);
+	k *= 0x7267616d;
 	return k;
 }
 
-uint64_t murmurmix(uint64_t value)
+uint64_t keymix(uint64_t value)
 {
 	uint64_t hash = 0;
 	uint32_t* arrHash = (uint32_t*)&hash;
 	uint32_t* arrValue = (uint32_t*)&value;
-	arrHash[0] = murmur32scramble(arrValue[0] + 1);
-	arrHash[1] = murmur32scramble(arrValue[1] + 1);
+	arrHash[0] = scramble(arrValue[0] + 1);
+	arrHash[1] = scramble(arrValue[1] + 1);
 	return hash;
 }
 
-std::string HashTable::Lookup(const uint64_t key)
+template<class V>
+class HashTableNode
 {
-	size_t pos = key % sizeTable;
-	HashTableNode* node = table[pos];
+public:
+	uint64_t key;
+	V value;
+	int deep;
+	List<HashTableNode<V>*> nextTable;
 
-	while (node)
-	{
-		if (node->key == key)
-			return node->value;
-		pos = murmurmix(key + node->deep + 1) % sizeTable;
-		node = node->nextTable[pos];
-	}
+	HashTableNode() : key(0), value(), deep(0) {}
+	HashTableNode(uint64_t key, V value, int deep) : key(key), value(value), deep(deep) {}
+};
 
-	return std::string();
-}
-
-int HashTable::Insert(const uint64_t key, const std::string& val)
+template<class V>
+class HashTable
 {
-	int deep = 0;
-	size_t pos = key % sizeTable;
-	List<HashTableNode*>* tempSave = &table;
-	HashTableNode* node = table[pos];
+public:
+	size_t sizeTable;
+	List<HashTableNode<V>*> table;
 
-	while (node)
+	HashTable() : sizeTable(5) {}
+
+	V Lookup(const uint64_t key)
 	{
-		if (node->key == key)  {
-			node->value = val;
-			return 0;
+		size_t pos = key % sizeTable;
+		HashTableNode<V>* node = table[pos];
+
+		while (node)
+		{
+			if (node->key == key)
+				return node->value;
+			pos = keymix(key + node->deep + 1) % sizeTable;
+			node = node->nextTable[pos];
 		}
-		deep++;
-		tempSave = &node->nextTable;
-		pos = murmurmix(key + deep) % sizeTable;
-		node = node->nextTable[pos];
+
+		return V();
 	}
 
-	HashTableNode* newNode = new HashTableNode(deep, key, val);
-	(*tempSave)[pos] = newNode;
+	int Insert(const uint64_t key, const V& val)
+	{
+		int deep = 0;
+		size_t pos = key % sizeTable;
+		List<HashTableNode<V>*>* tempSave = &table;
+		HashTableNode<V>* node = table[pos];
 
-	return 1;
-}
+		while (node)
+		{
+			if (node->key == key)  {
+				node->value = val;
+				return 0;
+			}
+			deep++;
+			tempSave = &node->nextTable;
+			pos = keymix(key + deep) % sizeTable;
+			node = node->nextTable[pos];
+		}
 
-void HashTable::LoadFromFile(std::string filePath)
+		HashTableNode<V>* newNode = new HashTableNode<V>(key, val, deep);
+		(*tempSave)[pos] = newNode;
+
+		return 1;
+	}
+};
+
+void HashTableLoadFromFile(HashTable<std::string>& hashT, std::string filePath)
 {
 	std::ifstream ifs(filePath);
 	if (!ifs.is_open())
@@ -172,7 +170,7 @@ void HashTable::LoadFromFile(std::string filePath)
 			else
 				continue;
 
-			lines += HashTable::Insert(key, line.substr(hashEnd + 1));
+			lines += hashT.Insert(key, line.substr(hashEnd + 1));
 		}
 	}
 
@@ -193,12 +191,12 @@ std::ostream& operator<<(std::ostream& stream, const indent& val) {
 	return stream;
 }
 
-void PrintTableRecursion(List<HashTableNode*>& table, size_t sizeTable,
+void PrintTableRecursion(List<HashTableNode<std::string>*>& table, size_t sizeTable,
 	std::ofstream& ofs, int indention)
 {
 	for (size_t i = 0; i < sizeTable; i++)
 	{
-		HashTableNode* temp = table[i];
+		HashTableNode<std::string>* temp = table[i];
 		if (temp)
 		{
 			ofs << indent(indention) << '"' << std::dec << i << '"' << ": {" << std::endl;
@@ -233,7 +231,7 @@ void PrintTableRecursion(List<HashTableNode*>& table, size_t sizeTable,
 	}
 }
 
-void PrintTable(HashTable& hashT)
+void PrintTable(HashTable<std::string>& hashT)
 {
 	std::ofstream ofs("output.json");
 	if (!ofs.is_open())
@@ -257,7 +255,7 @@ void PrintTable(HashTable& hashT)
 
 int main()
 {
-	HashTable hashT;
+	HashTable<std::string> hashT;
 	size_t sizeTable = 0;
 	std::cout << "Table size: ";
 	std::cin >> sizeTable;
@@ -267,7 +265,7 @@ int main()
 	std::string file = "test.txt";
 	std::cout << "File to load: ";
 	std::cin >> file;
-	hashT.LoadFromFile(file);
+	HashTableLoadFromFile(hashT, file);
 
 	std::stringstream ss;
 	uint64_t key = 0xbb3dff15;
