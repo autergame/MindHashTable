@@ -8,15 +8,14 @@ template<class T>
 class List
 {
 public:
-	class Item
+	struct Item
 	{
-	public:
 		T value;
-		int index;
+		size_t index;
 		Item* next;
 
 		Item() : value(), index(0), next(nullptr) {}
-		Item(int index) : value(), index(index), next(nullptr) {}
+		Item(size_t index) : value(), index(index), next(nullptr) {}
 
 		~Item() { delete value; }
 
@@ -39,7 +38,7 @@ public:
 		head = nullptr;
 	}
 
-	T& operator[](int index)
+	T& operator[](size_t index)
 	{
 		Item* node = head;
 		while (node != nullptr)
@@ -48,34 +47,37 @@ public:
 				return node->value;
 			node = node->next;
 		}
-
 		Item* newItem = new Item(index);
 		newItem->next = head;
 		head = newItem;
 		total++;
-
 		return newItem->value;
 	}
 
 	bool hasValues() { return head != nullptr; }
 };
 
-uint32_t scramble(uint32_t k)
-{
-	k *= 0x61757465;
-	k = (k << 19) | (k >> 13);
-	k *= 0x7267616d;
-	return k;
-}
+//uint64_t scramble(uint64_t value)
+//{
+//	value *= 0x61757465;
+//	value = (value << 19) | (value >> 13);
+//	value *= 0x7267616d;
+//	return value & 0xFFFFFFFF;
+//}
+//
+//uint64_t keymix2(uint64_t value)
+//{
+//	uint64_t hash = scramble((value & 0xFFFFFFFFUL) + 1);
+//	hash |= (scramble(((value & (0xFFFFFFFFULL << 32)) >> 32) + 1) << 32);
+//	return hash;
+//}
 
 uint64_t keymix(uint64_t value)
 {
-	uint64_t hash = 0;
-	uint32_t* arrHash = (uint32_t*)&hash;
-	uint32_t* arrValue = (uint32_t*)&value;
-	arrHash[0] = scramble(arrValue[0] + 1);
-	arrHash[1] = scramble(arrValue[1] + 1);
-	return hash;
+	value *= 0x61757465DEADC0DE;
+	value = (value << 47) | (value >> 25);
+	value *= 0xDEADC0DE7267616d;
+	return value;
 }
 
 template<class V>
@@ -84,11 +86,12 @@ class HashTableNode
 public:
 	uint64_t key;
 	V value;
-	int deep;
+	size_t deep;
 	List<HashTableNode<V>*> nextTable;
 
 	HashTableNode() : key(0), value(), deep(0) {}
-	HashTableNode(uint64_t key, V value, int deep) : key(key), value(value), deep(deep) {}
+	HashTableNode(uint64_t key, V value, size_t deep) 
+		: key(key), value(value), deep(deep) {}
 };
 
 template<class V>
@@ -99,12 +102,12 @@ public:
 	List<HashTableNode<V>*> table;
 
 	HashTable() : sizeTable(5) {}
+	HashTable(size_t sizeTable) : sizeTable(sizeTable) {}
 
 	V Lookup(const uint64_t key)
 	{
 		size_t pos = key % sizeTable;
 		HashTableNode<V>* node = table[pos];
-
 		while (node)
 		{
 			if (node->key == key)
@@ -112,17 +115,15 @@ public:
 			pos = keymix(key + node->deep + 1) % sizeTable;
 			node = node->nextTable[pos];
 		}
-
 		return V();
 	}
 
 	int Insert(const uint64_t key, const V& val)
 	{
-		int deep = 0;
+		size_t deep = 0;
 		size_t pos = key % sizeTable;
 		List<HashTableNode<V>*>* tempSave = &table;
 		HashTableNode<V>* node = table[pos];
-
 		while (node)
 		{
 			if (node->key == key)  {
@@ -134,10 +135,7 @@ public:
 			pos = keymix(key + deep) % sizeTable;
 			node = node->nextTable[pos];
 		}
-
-		HashTableNode<V>* newNode = new HashTableNode<V>(key, val, deep);
-		(*tempSave)[pos] = newNode;
-
+		(*tempSave)[pos] = new HashTableNode<V>(key, val, deep);
 		return 1;
 	}
 };
@@ -180,10 +178,10 @@ void HashTableLoadFromFile(HashTable<std::string>& hashT, std::string filePath)
 
 struct indent
 {
-	int indention = 0;
+	size_t indention = 0;
 	friend std::ostream& operator<<(std::ostream& stream, const indent& val);
 
-	indent(int indention) : indention(indention) {}
+	indent(const size_t indention) : indention(indention) {}
 };
 
 std::ostream& operator<<(std::ostream& stream, const indent& val) {
@@ -192,7 +190,7 @@ std::ostream& operator<<(std::ostream& stream, const indent& val) {
 }
 
 void PrintTableRecursion(List<HashTableNode<std::string>*>& table, size_t sizeTable,
-	std::ofstream& ofs, int indention)
+	std::ofstream& ofs, size_t indention)
 {
 	for (size_t i = 0; i < sizeTable; i++)
 	{
@@ -255,12 +253,11 @@ void PrintTable(HashTable<std::string>& hashT)
 
 int main()
 {
-	HashTable<std::string> hashT;
-	size_t sizeTable = 0;
+
+	size_t sizeTable = 5;
 	std::cout << "Table size: ";
 	std::cin >> sizeTable;
-	if (sizeTable > 0)
-		hashT.sizeTable = sizeTable;
+	HashTable<std::string> hashT(sizeTable);
 
 	std::string file = "test.txt";
 	std::cout << "File to load: ";
@@ -268,19 +265,19 @@ int main()
 	HashTableLoadFromFile(hashT, file);
 
 	std::stringstream ss;
+	std::string keyStr = "";
 	uint64_t key = 0xbb3dff15;
-	std::string keystr = "";
 	std::cout << "Press x or X to exit" << std::endl;
 	while (true)
 	{
 		std::cout << "Key: ";
-		std::cin >> keystr;
-		if (keystr == "x" || keystr == "X")
+		std::cin >> keyStr;
+		if (keyStr == "x" || keyStr == "X")
 			break;
-		ss << std::hex << keystr;
+		ss << std::hex << keyStr;
 		ss >> key;
-		std::cout << "Returned: " << hashT.Lookup(key) << std::endl;
 		ss.clear();
+		std::cout << "Returned: " << hashT.Lookup(key) << std::endl;
 	}
 
 	std::cout << "Generating json" << std::endl;
