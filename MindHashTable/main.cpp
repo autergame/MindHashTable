@@ -3,14 +3,15 @@
 #include <sstream>
 #include <fstream>
 #include <iostream>
+#include <filesystem>
 
-template<class T>
+template<class ValueType>
 class List
 {
 public:
 	struct Item
 	{
-		T value;
+		ValueType value;
 		size_t index;
 		Item* next;
 
@@ -38,7 +39,7 @@ public:
 		head = nullptr;
 	}
 
-	T& operator[](size_t index)
+	ValueType& operator[](size_t index)
 	{
 		Item* node = head;
 		while (node != nullptr)
@@ -80,34 +81,34 @@ uint64_t keymix(uint64_t value)
 	return value;
 }
 
-template<class V>
+template<class ValueType>
 class HashTableNode
 {
 public:
-	uint64_t key;
-	V value;
 	size_t deep;
-	List<HashTableNode<V>*> nextTable;
+	uint64_t key;
+	ValueType value;
+	List<HashTableNode<ValueType>*> nextTable;
 
 	HashTableNode() : key(0), value(), deep(0) {}
-	HashTableNode(uint64_t key, V value, size_t deep) 
+	HashTableNode(uint64_t key, ValueType value, size_t deep)
 		: key(key), value(value), deep(deep) {}
 };
 
-template<class V>
+template<class ValueType>
 class HashTable
 {
 public:
 	size_t sizeTable;
-	List<HashTableNode<V>*> table;
+	List<HashTableNode<ValueType>*> table;
 
 	HashTable() : sizeTable(5) {}
 	HashTable(size_t sizeTable) : sizeTable(sizeTable) {}
 
-	V Lookup(const uint64_t key)
+	ValueType Lookup(const uint64_t key)
 	{
 		size_t pos = key % sizeTable;
-		HashTableNode<V>* node = table[pos];
+		HashTableNode<ValueType>* node = table[pos];
 		while (node)
 		{
 			if (node->key == key)
@@ -115,15 +116,15 @@ public:
 			pos = keymix(key + node->deep + 1) % sizeTable;
 			node = node->nextTable[pos];
 		}
-		return V();
+		return ValueType();
 	}
 
-	int Insert(const uint64_t key, const V& val)
+	int Insert(const uint64_t key, const ValueType& val)
 	{
 		size_t deep = 0;
 		size_t pos = key % sizeTable;
-		List<HashTableNode<V>*>* tempSave = &table;
-		HashTableNode<V>* node = table[pos];
+		List<HashTableNode<ValueType>*>* tempSave = &table;
+		HashTableNode<ValueType>* node = table[pos];
 		while (node)
 		{
 			if (node->key == key)  {
@@ -135,7 +136,7 @@ public:
 			pos = keymix(key + deep) % sizeTable;
 			node = node->nextTable[pos];
 		}
-		(*tempSave)[pos] = new HashTableNode<V>(key, val, deep);
+		(*tempSave)[pos] = new HashTableNode<ValueType>(key, val, deep);
 		return 1;
 	}
 };
@@ -159,16 +160,11 @@ void HashTableLoadFromFile(HashTable<std::string>& hashT, std::string filePath)
 		if (!line.empty())
 		{
 			const size_t hashEnd = line.find(" ");
-
-			uint64_t key = 0;
-			if (hashEnd == 8)
-				key = strtoul(line.c_str(), nullptr, 16);
-			else if (hashEnd == 16)
-				key = strtoull(line.c_str(), nullptr, 16);
-			else
-				continue;
-
-			lines += hashT.Insert(key, line.substr(hashEnd + 1));
+			if (hashEnd != std::string::npos)
+			{
+				uint64_t key = strtoull(line.substr(0, hashEnd).c_str(), nullptr, 16);
+				lines += hashT.Insert(key, line.substr(hashEnd + 1));
+			}
 		}
 	}
 
@@ -184,7 +180,8 @@ struct indent
 	indent(const size_t indention) : indention(indention) {}
 };
 
-std::ostream& operator<<(std::ostream& stream, const indent& val) {
+std::ostream& operator<<(std::ostream& stream, const indent& val)
+{
 	stream << std::string(val.indention * 4, ' ');
 	return stream;
 }
@@ -253,18 +250,18 @@ void PrintTable(HashTable<std::string>& hashT)
 
 int main()
 {
-
 	size_t sizeTable = 5;
 	std::cout << "Table size: ";
 	std::cin >> sizeTable;
 	HashTable<std::string> hashT(sizeTable);
 
-	std::string file = "test.txt";
-	std::cout << "File to load: ";
-	std::cin >> file;
-	HashTableLoadFromFile(hashT, file);
+	std::string ext = ".txt";
+	for (auto &p : std::filesystem::recursive_directory_iterator(std::filesystem::current_path()))
+	{
+		if (p.path().extension() == ext)
+			HashTableLoadFromFile(hashT, p.path().filename().string());
+	}
 
-	std::stringstream ss;
 	std::string keyStr = "";
 	uint64_t key = 0xbb3dff15;
 	std::cout << "Press x or X to exit" << std::endl;
@@ -274,9 +271,7 @@ int main()
 		std::cin >> keyStr;
 		if (keyStr == "x" || keyStr == "X")
 			break;
-		ss << std::hex << keyStr;
-		ss >> key;
-		ss.clear();
+		key = strtoull(keyStr.c_str(), nullptr, 16);
 		std::cout << "Returned: " << hashT.Lookup(key) << std::endl;
 	}
 
